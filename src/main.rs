@@ -1,4 +1,5 @@
 mod commands;
+mod api;
 
 use std::env;
 use dotenv::dotenv;
