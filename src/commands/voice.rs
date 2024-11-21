@@ -34,12 +34,30 @@ pub async fn run(command: &CommandInteraction, ctx: &Context) -> Result<String, 
         .ok_or("Failed to get voice client")?
         .clone();
 
-    let _handler = manager.join(guild_id, channel_id).await.map_err(|e| e.to_string())?;
+    // Check if already connected and disconnect first
+    if let Some(handler_lock) = manager.get(guild_id) {
+        let mut handler = handler_lock.lock().await;
+        handler.leave().await.map_err(|e| e.to_string())?;
+    }
 
-    Ok("Connected to your voice channel!".to_string())
+    if let Ok(handler_lock) = manager.join(guild_id, channel_id).await {
+        let mut handler = handler_lock.lock().await;
+        if let Err(e) = handler.deafen(true).await {
+            // Clean up on error
+            handler.leave().await.map_err(|e| format!("Failed to clean up after deafen error: {:?}", e))?;
+            return Err(format!("Failed to deafen: {:?}", e));
+        }
+    } else {
+        return Err("Failed to join voice channel".to_string());
+    }
+
+    Ok("Connected to your voice channel and deafened!".to_string())
 }
 
 pub async fn run_disconnect(command: &CommandInteraction, ctx: &Context) -> Result<String, String> {
+    // Acknowledge the interaction first
+    command.defer(&ctx.http).await.map_err(|e| e.to_string())?;
+    
     let guild_id = command.guild_id.ok_or("This command can only be used in servers")?;
     
     let manager = songbird::get(ctx).await
@@ -47,7 +65,15 @@ pub async fn run_disconnect(command: &CommandInteraction, ctx: &Context) -> Resu
     
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
+        // Make sure we're undeafened before leaving
+        if let Err(e) = handler.deafen(false).await {
+            eprintln!("Failed to undeafen: {:?}", e);
+        }
         handler.leave().await.map_err(|e| e.to_string())?;
+        // Remove the handler explicitly and handle any errors
+        if let Err(e) = manager.remove(guild_id).await {
+            eprintln!("Failed to remove voice handler: {:?}", e);
+        }
     } else {
         return Err("Not connected to a voice channel".to_string());
     }
