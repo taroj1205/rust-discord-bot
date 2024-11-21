@@ -17,8 +17,8 @@ jobs:
         run: cargo install cargo-shuttle
       - name: Deploy to Shuttle
         env:
-          SHUTTLE_API_KEY: ${{ secrets.SHUTTLE_API_KEY }}
-          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          SHUTTLE_API_KEY: ${{ env.SHUTTLE_API_KEY }}
+          DISCORD_TOKEN: ${{ env.DISCORD_TOKEN }}
         run: |
           echo "DISCORD_TOKEN=\"$DISCORD_TOKEN\"" > Secrets.toml
           cargo shuttle deploy --allow-dirty
