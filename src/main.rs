@@ -66,14 +66,14 @@ impl EventHandler for Handler {
                 },
                 "connect" => {
                     match commands::voice::run(&command, &ctx).await {
-                        Ok(response) => Some(response),
-                        Err(error) => Some(error),
+                        Ok(_) => None,
+                        Err(_) => None,
                     }
                 },
                 "disconnect" => {
                     match commands::voice::run_disconnect(&command, &ctx).await {
-                        Ok(response) => Some(response),
-                        Err(error) => Some(error),
+                        Ok(_) => None,
+                        Err(_) => None,
                     }
                 },
                 _ => Some("not implemented :(".to_string()),

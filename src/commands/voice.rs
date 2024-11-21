@@ -1,7 +1,10 @@
 use serenity::builder::CreateCommand;
+use serenity::builder::EditInteractionResponse;
 use serenity::model::application::CommandInteraction;
 use serenity::prelude::*;
 use crate::db;
+use tokio::time::timeout;
+use std::time::Duration;
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("connect").description("Connect to your voice channel")
@@ -12,6 +15,13 @@ pub fn register_disconnect() -> CreateCommand {
 }
 
 pub async fn run(command: &CommandInteraction, ctx: &Context) -> Result<String, String> {
+    // Defer the response to show we're processing
+    if let Err(why) = command.defer(&ctx.http).await {
+        println!("❌ Failed to defer response: {}", why);
+        return Err(format!("Failed to defer response: {}", why));
+    }
+    println!("✅ Successfully deferred response");
+
     let guild_id = command.guild_id.ok_or("This command can only be used in servers")?;
     let user_id = command.user.id;
     
@@ -46,49 +56,116 @@ pub async fn run(command: &CommandInteraction, ctx: &Context) -> Result<String, 
         if let Err(e) = handler.deafen(true).await {
             // Clean up on error
             handler.leave().await.map_err(|e| format!("Failed to clean up after deafen error: {:?}", e))?;
+            let builder = EditInteractionResponse::new().content(format!("Failed to deafen: {:?}", e));
+            command.edit_response(&ctx.http, builder).await.map_err(|e| e.to_string())?;
             return Err(format!("Failed to deafen: {:?}", e));
         }
 
         // Set listening status in database
-        db::set_listening_status(guild_id.get(), channel_id.get(), true)
-            .map_err(|e| format!("Failed to update database: {:?}", e))?;
-    } else {
-        return Err("Failed to join voice channel".to_string());
-    }
+        if let Err(e) = db::set_listening_status(guild_id.get(), channel_id.get(), true) {
+            let builder = EditInteractionResponse::new().content(format!("Failed to update database: {:?}", e));
+            command.edit_response(&ctx.http, builder).await.map_err(|e| e.to_string())?;
+            return Err(format!("Failed to update database: {:?}", e));
+        }
 
-    Ok("Connected to your voice channel and deafened!".to_string())
+        let builder = EditInteractionResponse::new().content("Connected to your voice channel and deafened!");
+        command.edit_response(&ctx.http, builder).await.map_err(|e| e.to_string())?;
+        Ok("".to_string())
+    } else {
+        let builder = EditInteractionResponse::new().content("Failed to join voice channel");
+        command.edit_response(&ctx.http, builder).await.map_err(|e| e.to_string())?;
+        Err("Failed to join voice channel".to_string())
+    }
 }
 
 pub async fn run_disconnect(command: &CommandInteraction, ctx: &Context) -> Result<String, String> {
-    // Acknowledge the interaction first
-    command.defer(&ctx.http).await.map_err(|e| e.to_string())?;
+    println!("🔄 Starting disconnect command");
+    // Defer the response to show we're processing
+    if let Err(why) = command.defer(&ctx.http).await {
+        println!("❌ Failed to defer response: {}", why);
+        return Err(format!("Failed to defer response: {}", why));
+    }
+    println!("✅ Successfully deferred response");
     
     let guild_id = command.guild_id.ok_or("This command can only be used in servers")?;
+    println!("📍 Guild ID: {}", guild_id);
     
-    let manager = songbird::get(ctx).await
-        .ok_or("Failed to get voice client")?;
+    let manager = match songbird::get(ctx).await {
+        Some(manager) => {
+            println!("✅ Got voice manager");
+            manager
+        },
+        None => {
+            println!("❌ Failed to get voice manager");
+            return Err("Failed to get voice client".into())
+        }
+    };
     
     if let Some(handler_lock) = manager.get(guild_id) {
+        println!("✅ Got voice handler");
         let mut handler = handler_lock.lock().await;
+        println!("✅ Acquired handler lock");
+        
         // Make sure we're undeafened before leaving
         if let Err(e) = handler.deafen(false).await {
-            eprintln!("Failed to undeafen: {:?}", e);
+            println!("⚠️ Failed to undeafen: {:?}", e);
+        } else {
+            println!("✅ Successfully undeafened");
         }
-        handler.leave().await.map_err(|e| e.to_string())?;
-        // Remove the handler explicitly and handle any errors
-        if let Err(e) = manager.remove(guild_id).await {
-            eprintln!("Failed to remove voice handler: {:?}", e);
+        
+        // Get channel ID before leaving for database update
+        let maybe_channel_id = handler.current_channel().map(|id| id.0.into());
+        
+        if let Err(e) = handler.leave().await {
+            println!("❌ Failed to leave: {:?}", e);
+            let builder = EditInteractionResponse::new().content(format!("Failed to leave: {:?}", e));
+            command.edit_response(&ctx.http, builder).await.map_err(|e| e.to_string())?;
+            return Err(e.to_string());
+        }
+        println!("✅ Successfully left voice channel");
+
+        // Send success response before cleanup
+        println!("🎉 Sending success response");
+        let builder = EditInteractionResponse::new().content("Disconnected from voice channel!");
+        if let Err(e) = command.edit_response(&ctx.http, builder).await {
+            println!("❌ Failed to send success response: {:?}", e);
+            return Err(e.to_string());
+        }
+        println!("✅ Successfully sent response");
+
+        // Update database before spawning cleanup
+        if let Some(channel_id) = maybe_channel_id {
+            println!("📍 Updating database for channel ID: {}", channel_id);
+            if let Err(e) = db::set_listening_status(guild_id.get(), channel_id, false) {
+                println!("⚠️ Failed to update database: {:?}", e);
+            } else {
+                println!("✅ Successfully updated database");
+            }
         }
 
-        // Update database to mark as not listening
-        if let Some(channel_id) = handler.current_channel() {
-            let channel_id_u64: u64 = channel_id.0.into();
-            db::set_listening_status(guild_id.get(), channel_id_u64, false)
-                .map_err(|e| format!("Failed to update database: {:?}", e))?;
-        }
+        // Drop the handler lock before spawning cleanup
+        drop(handler);
+
+        // Spawn cleanup operation in a separate task
+        println!("🧹 Starting cleanup operations");
+        let guild_id_clone = guild_id;
+        let manager_clone = manager.clone();
+        tokio::spawn(async move {
+            // Try to remove the handler with a timeout
+            match timeout(Duration::from_secs(5), manager_clone.remove(guild_id_clone)).await {
+                Ok(remove_result) => match remove_result {
+                    Ok(_) => println!("✅ Successfully removed voice handler"),
+                    Err(e) => println!("⚠️ Failed to remove voice handler: {:?}", e),
+                },
+                Err(_) => println!("⚠️ Timeout while removing voice handler"),
+            }
+        });
+
+        Ok("".to_string())
     } else {
-        return Err("Not connected to a voice channel".to_string());
+        println!("ℹ️ Not connected to a voice channel");
+        let builder = EditInteractionResponse::new().content("Not connected to a voice channel");
+        command.edit_response(&ctx.http, builder).await.map_err(|e| e.to_string())?;
+        Err("Not connected to a voice channel".to_string())
     }
-
-    Ok("Disconnected from voice channel!".to_string())
 }
