@@ -9,6 +9,7 @@ lazy_static! {
 }
 
 pub fn init_db() -> Result<()> {
+    println!("🔄 Initializing database");
     let conn = DB_CONNECTION.lock().unwrap();
     conn.execute(
         "CREATE TABLE IF NOT EXISTS voice_channels (
@@ -26,20 +27,24 @@ pub fn init_db() -> Result<()> {
         [],
     )?;
     
+    println!("✅ Database initialized successfully");
     Ok(())
 }
 
 pub fn set_listening_status(guild_id: u64, channel_id: u64, is_listening: bool) -> Result<()> {
+    println!("🔄 Setting listening status for guild {} channel {} to {}", guild_id, channel_id, is_listening);
     let conn = DB_CONNECTION.lock().unwrap();
     conn.execute(
         "INSERT OR REPLACE INTO voice_channels (guild_id, channel_id, is_listening) 
          VALUES (?1, ?2, ?3)",
         [&(guild_id as i64), &(channel_id as i64), &(is_listening as i64)],
     )?;
+    println!("✅ Successfully updated listening status");
     Ok(())
 }
 
 pub fn is_listening(guild_id: u64, channel_id: u64) -> Result<bool> {
+    println!("🔍 Checking listening status for guild {} channel {}", guild_id, channel_id);
     let conn = DB_CONNECTION.lock().unwrap();
     let mut stmt = conn.prepare(
         "SELECT is_listening FROM voice_channels 
@@ -52,7 +57,13 @@ pub fn is_listening(guild_id: u64, channel_id: u64) -> Result<bool> {
     );
     
     match result {
-        Ok(status) => Ok(status),
-        Err(_) => Ok(false), // If no record exists, return false
+        Ok(status) => {
+            println!("✅ Found listening status: {}", status);
+            Ok(status)
+        },
+        Err(_) => {
+            println!("ℹ️ No listening status found, defaulting to false");
+            Ok(false)
+        }
     }
 }
