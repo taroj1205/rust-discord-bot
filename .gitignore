@@ -2,3 +2,4 @@
 Secrets.toml.shuttle*
 Secrets*.toml
 .env
+bot.db

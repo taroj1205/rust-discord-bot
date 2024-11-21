@@ -1,5 +1,6 @@
 mod commands;
 mod api;
+mod db;
 
 use std::env;
 use dotenv::dotenv;
@@ -115,6 +116,12 @@ impl EventHandler for Handler {
 #[tokio::main]
 async fn main() {
     dotenv().ok();
+
+    // Initialize database
+    if let Err(e) = db::init_db() {
+        eprintln!("Failed to initialize database: {:?}", e);
+        return;
+    }
 
     // Configure the client with your Discord bot token in the environment.
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");

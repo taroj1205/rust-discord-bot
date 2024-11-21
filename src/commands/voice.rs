@@ -1,6 +1,7 @@
 use serenity::builder::CreateCommand;
 use serenity::model::application::CommandInteraction;
 use serenity::prelude::*;
+use crate::db;
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("connect").description("Connect to your voice channel")
@@ -47,6 +48,10 @@ pub async fn run(command: &CommandInteraction, ctx: &Context) -> Result<String, 
             handler.leave().await.map_err(|e| format!("Failed to clean up after deafen error: {:?}", e))?;
             return Err(format!("Failed to deafen: {:?}", e));
         }
+
+        // Set listening status in database
+        db::set_listening_status(guild_id.get(), channel_id.get(), true)
+            .map_err(|e| format!("Failed to update database: {:?}", e))?;
     } else {
         return Err("Failed to join voice channel".to_string());
     }
@@ -73,6 +78,13 @@ pub async fn run_disconnect(command: &CommandInteraction, ctx: &Context) -> Resu
         // Remove the handler explicitly and handle any errors
         if let Err(e) = manager.remove(guild_id).await {
             eprintln!("Failed to remove voice handler: {:?}", e);
+        }
+
+        // Update database to mark as not listening
+        if let Some(channel_id) = handler.current_channel() {
+            let channel_id_u64: u64 = channel_id.0.into();
+            db::set_listening_status(guild_id.get(), channel_id_u64, false)
+                .map_err(|e| format!("Failed to update database: {:?}", e))?;
         }
     } else {
         return Err("Not connected to a voice channel".to_string());
