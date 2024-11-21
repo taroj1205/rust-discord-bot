@@ -6,20 +6,17 @@ use std::sync::Arc;
 
 use serenity::async_trait;
 use serenity::framework::standard::macros::group;
-use serenity::framework::standard::Configuration;
 use serenity::framework::StandardFramework;
-use serenity::gateway::ShardManager;
+use serenity::client::bridge::gateway::ShardManager;
 use serenity::http::Http;
 use serenity::model::event::ResumedEvent;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
-use tracing::{error, info};
+use tracing::info;
 use shuttle_secrets::SecretStore;
 use anyhow::anyhow;
 
 use crate::commands::math::*;
-use crate::commands::meta::*;
-use crate::commands::owner::*;
 
 pub struct ShardManagerContainer;
 
@@ -41,7 +38,7 @@ impl EventHandler for Handler {
 }
 
 #[group]
-#[commands(multiply, ping, quit)]
+#[commands(multiply)]
 struct General;
 
 #[shuttle_runtime::main]
