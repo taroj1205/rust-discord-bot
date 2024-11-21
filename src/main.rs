@@ -76,9 +76,8 @@ async fn serenity(#[shuttle_runtime::Secrets] secret_store: SecretStore) -> shut
     //     })
     //     .group(&GENERAL_GROUP);
 
-    let intents = GatewayIntents::GUILD_MESSAGES
-        | GatewayIntents::DIRECT_MESSAGES
-        | GatewayIntents::MESSAGE_CONTENT;
+    let intents = GatewayIntents::GUILDS
+        | GatewayIntents::GUILD_MESSAGES;
 
     let client = Client::builder(&token, intents)
         .event_handler(Bot)
