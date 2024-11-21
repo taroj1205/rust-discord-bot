@@ -1,73 +1,112 @@
-#![allow(deprecated)]
 mod commands;
 
-// use std::collections::HashSet;
-use std::sync::Arc;
-
-use serenity::all::{Message, ShardManager};
-
+use std::env;
+use dotenv::dotenv;
 use serenity::async_trait;
-use serenity::framework::standard::macros::group;
-// use serenity::http::Http;
-use serenity::model::event::ResumedEvent;
+use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage, CreateAttachment};
+use serenity::model::application::{Command, Interaction};
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
-use tracing::info;
-use shuttle_runtime::SecretStore;
-use anyhow::anyhow;
+use songbird::SerenityInit;
 
-use crate::commands::math::*;
-
-pub struct ShardManagerContainer;
-
-impl TypeMapKey for ShardManagerContainer {
-    type Value = Arc<ShardManager>;
-}
-
-struct Bot;
+struct Handler;
 
 #[async_trait]
-impl EventHandler for Bot {
-    async fn ready(&self, _: Context, ready: Ready) {
-        info!("Connected as {}", ready.user.name);
-    }
+impl EventHandler for Handler {
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        if let Interaction::Command(command) = interaction {
+            // println!("Received command interaction: {command:#?}");
 
-    async fn resume(&self, _: Context, _: ResumedEvent) {
-        info!("Resumed");
-    }
+            let content = match command.data.name.as_str() {
+                "ping" => Some(commands::ping::run(&command.data.options())),
+                "id" => Some(commands::id::run(&command.data.options())),
+                "attachmentinput" => Some(commands::attachmentinput::run(&command.data.options())),
+                "modal" => {
+                    commands::modal::run(&ctx, &command).await.unwrap();
+                    None
+                },
+                "hiroyuki" => {
+                    let audio_data = commands::hiroyuki::run(&command.data.options()).await.unwrap();
+                    command
+                        .create_response(
+                            &ctx.http,
+                            CreateInteractionResponse::Message(
+                                CreateInteractionResponseMessage::new()
+                                    .add_file(CreateAttachment::bytes(audio_data, "hiroyuki.wav")),
+                            ),
+                        )
+                        .await
+                        .unwrap();
+                    None
+                },
+                "connect" => {
+                    match commands::voice::run(&command, &ctx).await {
+                        Ok(response) => Some(response),
+                        Err(error) => Some(error),
+                    }
+                },
+                "disconnect" => {
+                    match commands::voice::run_disconnect(&command, &ctx).await {
+                        Ok(response) => Some(response),
+                        Err(error) => Some(error),
+                    }
+                },
+                _ => Some("not implemented :(".to_string()),
+            };
 
-    async fn message(&self, ctx: Context, msg: Message) {
-        if msg.content == "!ping" {
-            if let Err(why) = msg.channel_id.say(&ctx, "Pong!").await {
-                println!("Error sending message: {:?}", why);
+            if let Some(content) = content {
+                let data = CreateInteractionResponseMessage::new().content(content);
+                let builder = CreateInteractionResponse::Message(data);
+                if let Err(why) = command.create_response(&ctx.http, builder).await {
+                    println!("Cannot respond to slash command: {why}");
+                }
             }
         }
-        else if msg.content == "!hello" {
-            if let Err(why) = msg.channel_id.say(&ctx, "world!").await {
-                println!("Error sending message: {:?}", why);
-            }
+    }
+
+    async fn ready(&self, ctx: Context, ready: Ready) {
+        println!("{} is connected!", ready.user.name);
+
+        let global_commands = Command::set_global_commands(&ctx.http, vec![
+            commands::ping::register(),
+            commands::id::register(),
+            commands::welcome::register(),
+            commands::numberinput::register(),
+            commands::attachmentinput::register(),
+            commands::modal::register(),
+            commands::wonderful_command::register(),
+            commands::hiroyuki::register(),
+            commands::voice::register(),
+            commands::voice::register_disconnect(),
+        ])
+        .await;
+
+        match global_commands {
+            Ok(_commands) => println!("Successfully registered global commands!"),
+            Err(why) => println!("Error registering global commands: {why:?}"),
         }
     }
 }
 
-#[group]
-#[commands(multiply)]
-struct General;
+#[tokio::main]
+async fn main() {
+    dotenv().ok();
 
-#[shuttle_runtime::main]
-async fn serenity(#[shuttle_runtime::Secrets] secret_store: SecretStore) -> shuttle_serenity::ShuttleSerenity {
-    // Get the discord token set in `Secrets.toml`
-    let token = secret_store
-        .get("DISCORD_TOKEN")
-        .ok_or_else(|| anyhow!("'DISCORD_TOKEN' was not found"))?;
+    // Configure the client with your Discord bot token in the environment.
+    let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
-    let intents = GatewayIntents::GUILDS
-        | GatewayIntents::GUILD_MESSAGES;
-
-    let client = Client::builder(&token, intents)
-        .event_handler(Bot)
+    // Build our client.
+    let mut client = Client::builder(token, GatewayIntents::GUILDS | GatewayIntents::GUILD_VOICE_STATES)
+        .event_handler(Handler)
+        .register_songbird()
         .await
-        .expect("Err creating client");
+        .expect("Error creating client");
 
-    Ok(client.into())
+    // Finally, start a single shard, and start listening to events.
+    //
+    // Shards will automatically attempt to reconnect, and will perform exponential backoff until
+    // it reconnects.
+    if let Err(why) = client.start().await {
+        println!("Client error: {why:?}");
+    }
 }
