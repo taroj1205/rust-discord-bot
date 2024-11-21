@@ -4,7 +4,10 @@ mod api;
 use std::env;
 use dotenv::dotenv;
 use serenity::async_trait;
-use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage, CreateAttachment};
+use serenity::builder::{
+    CreateInteractionResponse, CreateInteractionResponseMessage, 
+    CreateAttachment, EditInteractionResponse, CreateInteractionResponseFollowup
+};
 use serenity::model::application::{Command, Interaction};
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
@@ -27,17 +30,37 @@ impl EventHandler for Handler {
                     None
                 },
                 "hiroyuki" => {
-                    let audio_data = commands::hiroyuki::run(&command.data.options()).await.unwrap();
-                    command
-                        .create_response(
-                            &ctx.http,
-                            CreateInteractionResponse::Message(
-                                CreateInteractionResponseMessage::new()
-                                    .add_file(CreateAttachment::bytes(audio_data, "hiroyuki.wav")),
-                            ),
-                        )
-                        .await
-                        .unwrap();
+                    match commands::hiroyuki::run(&ctx, &command, &command.data.options()).await {
+                        Ok(audio_data) => {
+                            // First, edit the deferred response to show success
+                            if let Err(e) = command
+                                .edit_response(&ctx.http,
+                                    EditInteractionResponse::new()
+                                        .content("✅ Voice generated successfully!"))
+                                .await
+                            {
+                                println!("Failed to send success message: {}", e);
+                            }
+
+                            // Then send the audio file as a follow-up message
+                            let followup = CreateInteractionResponseFollowup::new()
+                                .add_file(CreateAttachment::bytes(audio_data, "hiroyuki.wav"));
+                                
+                            if let Err(e) = command.create_followup(&ctx.http, followup).await {
+                                println!("Failed to send audio file: {}", e);
+                            }
+                        }
+                        Err(why) => {
+                            if let Err(e) = command
+                                .edit_response(&ctx.http, 
+                                    EditInteractionResponse::new()
+                                        .content(&why))
+                                .await
+                            {
+                                println!("Failed to send error response: {}", e);
+                            }
+                        }
+                    }
                     None
                 },
                 "connect" => {
