@@ -1,6 +1,7 @@
 mod commands;
 mod api;
 mod db;
+mod handlers;
 
 use std::env;
 use dotenv::dotenv;
@@ -11,6 +12,7 @@ use serenity::builder::{
 };
 use serenity::model::application::{Command, Interaction};
 use serenity::model::gateway::Ready;
+use serenity::model::channel::Message;
 use serenity::prelude::*;
 use songbird::SerenityInit;
 
@@ -89,6 +91,12 @@ impl EventHandler for Handler {
         }
     }
 
+    async fn message(&self, ctx: Context, msg: Message) {
+        if let Err(e) = handlers::message::handle_message(&ctx, &msg).await {
+            println!("Error handling message: {}", e);
+        }
+    }
+
     async fn ready(&self, ctx: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
 
@@ -127,7 +135,10 @@ async fn main() {
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
     // Build our client.
-    let mut client = Client::builder(token, GatewayIntents::GUILDS | GatewayIntents::GUILD_VOICE_STATES)
+    let mut client = Client::builder(token, GatewayIntents::GUILDS 
+        | GatewayIntents::GUILD_VOICE_STATES 
+        | GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::MESSAGE_CONTENT)
         .event_handler(Handler)
         .register_songbird()
         .await
