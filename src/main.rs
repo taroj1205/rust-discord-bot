@@ -13,7 +13,7 @@ use serenity::model::event::ResumedEvent;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 use tracing::info;
-use shuttle_secrets::SecretStore;
+use shuttle_runtime::SecretStore;
 use anyhow::anyhow;
 
 use crate::commands::math::*;
@@ -24,10 +24,10 @@ impl TypeMapKey for ShardManagerContainer {
     type Value = Arc<ShardManager>;
 }
 
-struct Handler;
+struct Bot;
 
 #[async_trait]
-impl EventHandler for Handler {
+impl EventHandler for Bot {
     async fn ready(&self, _: Context, ready: Ready) {
         info!("Connected as {}", ready.user.name);
     }
@@ -42,7 +42,7 @@ impl EventHandler for Handler {
 struct General;
 
 #[shuttle_runtime::main]
-async fn serenity(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> shuttle_serenity::ShuttleSerenity {
+async fn serenity(#[shuttle_runtime::Secrets] secret_store: SecretStore) -> shuttle_serenity::ShuttleSerenity {
     // Get the discord token set in `Secrets.toml`
     let token = secret_store
         .get("DISCORD_TOKEN")
@@ -82,7 +82,7 @@ async fn serenity(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> shut
         | GatewayIntents::MESSAGE_CONTENT;
 
     let client = Client::builder(&token, intents)
-        .event_handler(Handler)
+        .event_handler(Bot)
         .framework(framework)
         .await
         .expect("Err creating client");
