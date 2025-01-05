@@ -10,8 +10,16 @@ RUN apt-get update && \
 WORKDIR /usr/src/app
 COPY . .
 
+# Set environment variables for cargo to optimize memory usage
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
+ENV CARGO_BUILD_JOBS=1
+ENV RUSTFLAGS="-C target-cpu=native -C opt-level=3"
+
+# Build dependencies first (this will be cached)
+RUN cargo fetch
+
 # Build the application with release profile
-RUN cargo build --release
+RUN cargo build --release --verbose
 
 # Create a new stage with a minimal image
 FROM debian:bookworm-slim
