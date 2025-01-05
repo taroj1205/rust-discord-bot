@@ -13,6 +13,7 @@ use serenity::builder::{
 use serenity::model::application::{Command, Interaction};
 use serenity::model::gateway::Ready;
 use serenity::model::channel::Message;
+use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
 use songbird::SerenityInit;
 
@@ -94,6 +95,12 @@ impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
         if let Err(e) = handlers::message::handle_message(&ctx, &msg).await {
             println!("Error handling message: {}", e);
+        }
+    }
+
+    async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
+        if let Err(e) = handlers::voice_state::handle_voice_state_update(&ctx, old, new).await {
+            println!("❌ Error handling voice state update: {}", e);
         }
     }
 
