@@ -1,0 +1,25 @@
+# Git
+.git
+.gitignore
+
+# Rust
+target/
+Cargo.lock
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Database
+*.db
+
+# Environment
+.env.example
+
+# Editor
+.vscode/
+.idea/
+
+# Misc
+*.log
+README.md
