@@ -3,12 +3,14 @@ use serenity::prelude::*;
 use songbird::input::Input;
 use regex::Regex;
 use lazy_static::lazy_static;
+use serenity::model::id::UserId;
 
 use crate::api::hiroyuki;
 use crate::db;
 
 lazy_static! {
     static ref URL_REGEX: Regex = Regex::new(r"https?://[^\s]+").unwrap();
+    static ref MENTION_REGEX: Regex = Regex::new(r"<@!?(\d+)>").unwrap();
 }
 
 pub async fn handle_message(ctx: &Context, msg: &Message) -> Result<(), String> {
@@ -76,8 +78,24 @@ pub async fn handle_message(ctx: &Context, msg: &Message) -> Result<(), String> 
         }
     };
 
+    // Process message content
+    let mut processed_content = msg.content.clone();
+
+    // Replace user mentions with usernames using regex
+    if let Some(guild) = msg.guild(&ctx.cache) {
+        processed_content = MENTION_REGEX.replace_all(&processed_content, |caps: &regex::Captures| {
+            if let Ok(user_id) = caps[1].parse::<u64>() {
+                let user_id = UserId::new(user_id);
+                if let Some(member) = guild.members.get(&user_id) {
+                    return member.display_name().to_string();
+                }
+            }
+            caps[0].to_string()
+        }).to_string();
+    }
+
     // Replace URLs with リンク省略
-    let processed_content = URL_REGEX.replace_all(&msg.content, "リンク省略");
+    processed_content = URL_REGEX.replace_all(&processed_content, "リンク省略").to_string();
     println!("🔊 Generating voice for message: {}", processed_content);
     
     // Get audio data from Hiroyuki API
