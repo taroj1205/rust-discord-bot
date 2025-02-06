@@ -17,9 +17,16 @@ pub mod language {
 
     impl From<&str> for Language {
         fn from(s: &str) -> Self {
+            println!("🔄 Converting language string: {}", s);
             match s.to_lowercase().as_str() {
-                "japanese" | "ja" | "jp" => Language::Japanese,
-                _ => Language::English, // default to English
+                "japanese" | "ja" | "jp" => {
+                    println!("✅ Detected Japanese language");
+                    Language::Japanese
+                },
+                _ => {
+                    println!("✅ Defaulting to English language");
+                    Language::English
+                }
             }
         }
     }

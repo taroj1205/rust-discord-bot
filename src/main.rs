@@ -2,6 +2,7 @@ mod commands;
 mod api;
 mod db;
 mod handlers;
+mod audio;
 
 use std::env;
 use dotenv::dotenv;
@@ -29,7 +30,12 @@ impl EventHandler for Handler {
                 "ping" => Some(commands::ping::run(&command.data.options())),
                 "id" => Some(commands::id::run(&command.data.options())),
                 "attachmentinput" => Some(commands::attachmentinput::run(&command.data.options())),
-                "setlanguage" => Some(commands::setlanguage::run(&command.data.options())),
+                "setlanguage" => {
+                    match commands::setlanguage::run(&command, &ctx).await {
+                        Ok(response) => Some(response),
+                        Err(e) => Some(e),
+                    }
+                },
                 "modal" => {
                     commands::modal::run(&ctx, &command).await.unwrap();
                     None
@@ -137,6 +143,12 @@ async fn main() {
     // Initialize database
     if let Err(e) = db::init_db() {
         eprintln!("Failed to initialize database: {:?}", e);
+        return;
+    }
+
+    // Initialize audio assets
+    if let Err(e) = audio::ensure_audio_assets().await {
+        eprintln!("Failed to initialize audio assets: {:?}", e);
         return;
     }
 
