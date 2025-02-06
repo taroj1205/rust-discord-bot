@@ -7,3 +7,4 @@ pub mod welcome;
 pub mod wonderful_command;
 pub mod hiroyuki;
 pub mod voice;
+pub mod setlanguage;
