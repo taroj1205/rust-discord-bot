@@ -29,6 +29,7 @@ impl EventHandler for Handler {
                 "ping" => Some(commands::ping::run(&command.data.options())),
                 "id" => Some(commands::id::run(&command.data.options())),
                 "attachmentinput" => Some(commands::attachmentinput::run(&command.data.options())),
+                "setlanguage" => Some(commands::setlanguage::run(&command.data.options())),
                 "modal" => {
                     commands::modal::run(&ctx, &command).await.unwrap();
                     None
@@ -118,6 +119,7 @@ impl EventHandler for Handler {
             commands::hiroyuki::register(),
             commands::voice::register(),
             commands::voice::register_disconnect(),
+            commands::setlanguage::register(),
         ])
         .await;
 

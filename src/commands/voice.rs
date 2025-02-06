@@ -45,10 +45,27 @@ pub async fn run(command: &CommandInteraction, ctx: &Context) -> Result<String, 
         .ok_or("Failed to get voice client")?
         .clone();
 
-    // Check if already connected and disconnect first
+    // Check if already connected
     if let Some(handler_lock) = manager.get(guild_id) {
+        // Check if bot is in the same channel as the user
         let mut handler = handler_lock.lock().await;
-        handler.leave().await.map_err(|e| e.to_string())?;
+        if let Some(call) = handler.current_connection() {
+            if call.channel_id.map(|id| id.0.get()) == Some(voice_channel_id.get()) {
+                // Bot is already in the same channel, just update the listening status
+                if let Err(e) = db::set_listening_status(guild_id.get(), command_channel_id.get(), true) {
+                    println!("❌ Failed to store channel in database: {}", e);
+                    return Err(format!("Failed to store channel in database: {}", e));
+                }
+                println!("✅ Successfully updated listening status");
+
+                let builder = EditInteractionResponse::new().content("Updated listening status for this channel!");
+                command.edit_response(&ctx.http, builder).await.map_err(|e| e.to_string())?;
+                return Ok("".to_string());
+            } else {
+                // Bot is in a different channel, need to move it
+                handler.leave().await.map_err(|e| e.to_string())?;
+            }
+        }
     }
 
     // Connect to the voice channel

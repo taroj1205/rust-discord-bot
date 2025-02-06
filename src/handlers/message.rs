@@ -25,6 +25,25 @@ pub async fn handle_message(ctx: &Context, msg: &Message) -> Result<(), String> 
                 println!("❌ Not listening in this channel, ignoring message");
                 return Ok(());
             }
+
+            // Get the voice manager to check if we're actually in a voice channel
+            println!("🎤 Getting voice manager");
+            let manager = match songbird::get(ctx).await {
+                Some(manager) => manager.clone(),
+                None => {
+                    println!("❌ Voice client not available");
+                    return Err("Failed to get voice client".to_string());
+                }
+            };
+
+            // If we're supposed to be listening but not in a voice channel, update the database
+            if !manager.get(guild_id).is_some() {
+                println!("⚠️ Database says listening but not in voice channel, updating status");
+                if let Err(e) = db::set_listening_status(guild_id.get(), channel_id.get(), false) {
+                    println!("❌ Failed to update listening status: {}", e);
+                }
+                return Ok(());
+            }
         },
         Err(e) => {
             println!("❌ Error checking listening status: {}", e);
@@ -32,7 +51,7 @@ pub async fn handle_message(ctx: &Context, msg: &Message) -> Result<(), String> 
         }
     }
 
-    println!("🎤 Getting voice manager");
+    println!("🎤 Getting voice manager for playback");
     // Get the voice manager
     let manager = songbird::get(ctx)
         .await

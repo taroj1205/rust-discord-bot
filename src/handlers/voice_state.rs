@@ -13,6 +13,16 @@ pub async fn handle_voice_state_update(ctx: &Context, old: Option<VoiceState>, n
         if let Some(old_channel_id) = old_state.channel_id {
             let guild_id = new.guild_id.ok_or("Not in a guild")?;
 
+            // Check if the bot was the one who left/was kicked
+            if new.user_id == ctx.cache.current_user().id {
+                println!("🚫 Bot was disconnected from voice channel in guild {}", guild_id);
+                // Reset all listening statuses for this guild
+                if let Err(e) = crate::db::reset_guild_listening_status(guild_id.get()) {
+                    println!("❌ Failed to reset listening statuses: {}", e);
+                }
+                return Ok(());
+            }
+
             // Get the guild and count non-bot users before any async calls
             let non_bot_count = {
                 let guild = guild_id
