@@ -1,9 +1,15 @@
 use serenity::model::channel::Message;
 use serenity::prelude::*;
 use songbird::input::Input;
+use regex::Regex;
+use lazy_static::lazy_static;
 
 use crate::api::hiroyuki;
 use crate::db;
+
+lazy_static! {
+    static ref URL_REGEX: Regex = Regex::new(r"https?://[^\s]+").unwrap();
+}
 
 pub async fn handle_message(ctx: &Context, msg: &Message) -> Result<(), String> {
     // Ignore messages from bots to prevent potential loops
@@ -70,9 +76,12 @@ pub async fn handle_message(ctx: &Context, msg: &Message) -> Result<(), String> 
         }
     };
 
-    println!("🔊 Generating voice for message: {}", msg.content);
+    // Replace URLs with リンク省略
+    let processed_content = URL_REGEX.replace_all(&msg.content, "リンク省略");
+    println!("🔊 Generating voice for message: {}", processed_content);
+    
     // Get audio data from Hiroyuki API
-    let audio_data = hiroyuki::get_hiroyuki_voice(&msg.content)
+    let audio_data = hiroyuki::get_hiroyuki_voice(&processed_content)
         .await
         .map_err(|e| format!("Failed to get Hiroyuki voice: {}", e))?;
 
